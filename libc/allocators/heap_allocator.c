@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <stdalign.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdbool.h>
@@ -26,7 +27,9 @@ typedef struct block_descriptor{
     size_t size;
     // Adding padding allows me to simply return (void*)(metadata_node + 1) to the user
     char padding[ALIGNMENT - (sizeof(struct block_descriptor*) + sizeof(bool) + sizeof(size_t)) % ALIGNMENT];
-} block_descriptor;
+} __attribute__((packed)) block_descriptor;
+// __attribute__ tells the compiler to not add extra padding to the specific
+// values. It would still work regardless, it just saves memory
 
 void* heap_allocate(size_t size_requested){
 
@@ -68,11 +71,7 @@ void* heap_allocate(size_t size_requested){
 
     } 
 
-    // Now add general case
-    
-    // Just sbrk the needed bytes, which will return the previous end. Maybe +1
-    // to memcpy in the new struct and then return void pointer. Very similar
-    // to first iteration.
+    // General case
 
     void* new_allocation_start = sbrk(next_highest_aligned_multiple(size_requested + sizeof(block_descriptor)));
     if (new_allocation_start == (void *)-1) return NULL;
@@ -92,8 +91,35 @@ void* heap_allocate(size_t size_requested){
 }
 
 // first connect old bd to new one in allocate and then move here
-void free(void *ptr){
+void heap_free(void *ptr){
 
+    block_descriptor* metadata_node = (block_descriptor *)((char *)(ptr) - sizeof(block_descriptor));
 
+    metadata_node->occupied = false;
+
+    // Check after, then before
+
+    // Merge if the next one is also unoccupied
+
+    // Check metadata_node isn't the last
+    if (metadata_node->next != NULL){
+        if (metadata_node->next->occupied == false){
+            metadata_node->size += metadata_node->next->size;
+            metadata_node->next = metadata_node->next->next;
+        }
+    }
+
+    // Merge if the previous is unoccupied
+    block_descriptor* previous_block_descriptor = (block_descriptor *)heap_start;
+
+    // Check metadata_node isn't the first
+    if (previous_block_descriptor != metadata_node){
+        while (previous_block_descriptor->next != metadata_node) previous_block_descriptor = previous_block_descriptor->next;
+
+        if (previous_block_descriptor->occupied == false){
+            previous_block_descriptor-> size += previous_block_descriptor->next->size;
+            previous_block_descriptor->next = previous_block_descriptor->next->next;
+        }
+    }
 
 }
