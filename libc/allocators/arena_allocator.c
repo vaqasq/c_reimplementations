@@ -9,7 +9,7 @@ static int currIndex = 0;
 #define largestIndex 1024*1024-1
 // Ensures compiler/cpu are happy that the address is a multiple of the type.
 // Given 0th index of arena is aligned, just align type with respect to index
-#define next_highest_multiple(index, alignment) ((index + alignment - 1) / alignment) * alignment;
+#define next_highest_multiple(index, alignment) ((index + alignment - 1) / alignment) * alignment
 
 void* arena_allocate(size_t numBytes, size_t alignment){
 
