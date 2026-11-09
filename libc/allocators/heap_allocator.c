@@ -26,7 +26,7 @@ typedef struct block_descriptor{
     bool occupied;
     size_t size;
     // Adding padding allows me to simply return (void*)(metadata_node + 1) to the user
-    char padding[ALIGNMENT - (sizeof(struct block_descriptor*) + sizeof(bool) + sizeof(size_t)) % ALIGNMENT];
+    char padding[(ALIGNMENT - (sizeof(struct block_descriptor*) + sizeof(bool) + sizeof(size_t)) % ALIGNMENT) % ALIGNMENT];
 } __attribute__((packed)) block_descriptor;
 // __attribute__ tells the compiler to not add extra padding to the specific
 // values. It would still work regardless, it just saves memory
@@ -59,10 +59,13 @@ void* heap_allocate(size_t size_requested){
 
         // Ensures next node will be aligned. Means more memory is returned to
         // user than request, which is normal
-        sbrk(next_highest_aligned_multiple(size_requested + sizeof(block_descriptor)));
+
+        size_t total = next_highest_aligned_multiple(size_requested + sizeof(block_descriptor));
+
+        sbrk(total);
 
         // Add first node
-        block_descriptor first_bd  = {NULL, true, size_requested};
+        block_descriptor first_bd  = {NULL, true, total};
         memcpy(heap_start, &first_bd, sizeof(block_descriptor));
 
         // char is 1 byte, otherwise I could just use uintptr_t
@@ -72,18 +75,42 @@ void* heap_allocate(size_t size_requested){
     } 
 
     // General case
+    
+    size_t total = next_highest_aligned_multiple(size_requested + sizeof(block_descriptor));
+    
+    // search for reusable blocks 
+    block_descriptor* starting_block = (block_descriptor*)heap_start;
+    while(starting_block != NULL){
+        
+        if (starting_block->occupied == false && starting_block->size >= total){
+            // allocate in this block
 
-    void* new_allocation_start = sbrk(next_highest_aligned_multiple(size_requested + sizeof(block_descriptor)));
+            starting_block->occupied = true;
+            return (void*)((char *)(starting_block) + sizeof(block_descriptor));
+
+        }
+
+        // otherwise 
+
+        starting_block = starting_block->next;
+        
+    }
+
+
+    // Couldn't find reusable block
+
+    void* new_allocation_start = sbrk(total);
     if (new_allocation_start == (void *)-1) return NULL;
 
-    block_descriptor new_bd = {NULL, true, size_requested};
+    block_descriptor new_bd = {NULL, true, total};
     memcpy(new_allocation_start, &new_bd, sizeof(block_descriptor));
 
     // connect old bd to this one, then return user_ptr
 
     block_descriptor* fbd = (block_descriptor *)heap_start;
     while (fbd->next != NULL) fbd = fbd->next;
-    fbd->next = &new_bd;
+    fbd->next = (block_descriptor *)new_allocation_start;
+
 
     user_ptr = (void *)((char *)(new_allocation_start) + sizeof(block_descriptor));
     return user_ptr;

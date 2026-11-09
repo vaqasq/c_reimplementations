@@ -33,3 +33,11 @@ Provides the -l and -a options. Accepts -la, or -l -a, order-agnostic.
 
 #### mkdir
 Assumes parent dirs already exist. No available flags.
+
+Lib C
+
+#### arena allocator
+A simple bump allocator
+
+#### heap allocator
+Uses sbrk and a free list. Kept in simple.
