@@ -1,27 +1,38 @@
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 // use exec to launch shell
-// set up repl: Done
-// scan and parse args, setting up argc, argv: Done
 // fork and exec
 // ignore signal handlers in parent prcoess but register INT/QUIT sigs in child process
 // add special handling for cd, exit, history. There are others but just these for now
 // Extra: Piping, >, >>, config files, & (sigchld required for async), etc
 
 
-// Could argciously realloc to form a large array
-// For proof of concept, I will just use a very large buffer
-#define LINESIZE 1024
+// SIGINT signal handler for parent process
+bool interrupt_signal_recieved = false;
+
+static void parent_sigint_handler(int sig){
+    interrupt_signal_recieved = true;
+}
+
+// write a child_siginit_handler. Consider _Exit() over exit() for async safety, perhaps it wont matter.
 
 int main(void)
 {
-    // distable stdio buffering
+
+
+    // register SIGINT handler.
+    // Not as portable as sigaction()
+    signal(SIGINT, parent_sigint_handler);
+
+    // disable stdio buffering
     setvbuf(stdout, NULL, _IONBF, 0);
 
     char* arg_line = NULL;
@@ -35,15 +46,22 @@ int main(void)
          * prompt
          */
 
-        printf("ash > ");
+        printf("trash > ");
 
         /*
          * get cmd input
          */
 
         if ((nread = getline(&arg_line, &arg_line_len, stdin)) == -1){
-            perror("perror");
+            perror("getline");
             exit(EXIT_FAILURE);
+        }
+
+        // check if ^C was recived.
+        if (interrupt_signal_recieved){
+            interrupt_signal_recieved = false;
+            fprintf(stdout, "SIGINT recieved, input ignored\n");
+            continue;
         }
 
         // remove \n from end
@@ -70,9 +88,42 @@ int main(void)
         argv[argc] = NULL;  
 
         /*
-         * Intercept if cd, history, exit
+         * Intercept if exit and cd.
+         * Consider adding a history utility
          */
 
+        if (0 == (strcmp("exit", argv[0]))){ 
+            if (argc != 1){
+                fprintf(stderr, "-trash: exit takes no extra inputs\n");
+                free(argv);
+                continue;
+            }
+            free(argv);
+            break;
+        } else if (0 == (strcmp("cd", argv[0]))){ // Will only effect the working process
+            if (argc == 1){
+                fprintf(stderr, "-trash: please provide a directory\n");
+                free(argv);
+                continue;
+            }
+            else if (argc > 2){
+                fprintf(stderr, "-trash: please provide a singular directory\n");
+                free(argv);
+                continue;
+            }
+            
+            if (-1 == chdir(argv[1])){
+                perror("chdir");
+                exit(EXIT_FAILURE);
+
+            }
+
+            printf("You are now in dir: %s\n", argv[1]);
+            free(argv);
+            continue;
+
+
+        }
 
         /*
          * fork and exec
@@ -84,5 +135,6 @@ int main(void)
     }
 
     free(arg_line);
+    return EXIT_SUCCESS;
 
 }
