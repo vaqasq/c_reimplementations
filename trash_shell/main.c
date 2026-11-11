@@ -73,12 +73,6 @@ int main(void)
          * Intercept if cd, history, exit
          */
 
-        for (size_t i = 0; i < argc; ++i){
-            printf("%s, %d, %d\n", argv[i],(int)i, argc);
-        }
-        exit(EXIT_SUCCESS);
-
-
 
         /*
          * fork and exec
