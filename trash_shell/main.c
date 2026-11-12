@@ -12,8 +12,8 @@
 * use exec to launch shell
 * Consider adding custom malloc and arena allocator
 * ignore signal handlers in parent prcoess but register INT/QUIT sigs in child process for &
-* add special handling for cd, exit, history. There are others but just these for now
-* Extra: Piping, >, >>, config files, & (sigchld required for async), etc
+* Piping, >, >>, config files, & (sigchld required for async), etc
+* Extra: add history(special case), other coreutils
 */
 
 // SIGINT signal handler for parent process
@@ -100,7 +100,6 @@ int main(void)
                 continue;
             }
             free(argv);
-            free(arg_line);
             exit(0);
         } else if (0 == (strcmp("cd", argv[0]))){ // Will only effect the working process
             if (argc == 1){
@@ -163,7 +162,6 @@ int main(void)
 
     }
 
-    free(arg_line);
     return EXIT_SUCCESS;
 
 }
