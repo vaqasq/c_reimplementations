@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
+// Consider adding custom malloc and arena allocator
 
 // use exec to launch shell
 // fork and exec
@@ -92,6 +93,7 @@ int main(void)
          * Consider adding a history utility
          */
 
+        // stops working for some reason
         if (0 == (strcmp("exit", argv[0]))){ 
             if (argc != 1){
                 fprintf(stderr, "-trash: exit takes no extra inputs\n");
@@ -113,8 +115,9 @@ int main(void)
             }
             
             if (-1 == chdir(argv[1])){
-                perror("chdir");
-                exit(EXIT_FAILURE);
+                fprintf(stderr, "cd failed\n");
+                free(argv);
+                continue;
 
             }
 
@@ -129,7 +132,35 @@ int main(void)
          * fork and exec
          */
 
-        // use your own implementation of the gnu coreutils for fun
+        const char* home = getenv("HOME");
+
+        char cmd_buf[100];
+        int written = snprintf(cmd_buf, sizeof(cmd_buf), "%s/personal_utils/%s", home, argv[0]);
+
+        if (written >= sizeof(cmd_buf)){
+            fprintf(stderr, "Sorry, your cmd's name is too large\n");
+            free(argv);
+            continue;
+        }
+    
+        pid_t pid = fork();
+        
+        switch(pid){
+            case 0: ; // execute
+                if (-1 == execv(cmd_buf, argv)){
+                    fprintf(stderr, "exec failed\n");
+                    free(argv);
+                    continue;
+                }
+            case -1:
+                fprintf(stderr, "fork failed\n");
+                free(argv);
+                continue;
+            default: // parent process, wait for child to be done
+               waitpid(pid,NULL,0);
+        }
+
+
 
 
         free(argv);
@@ -140,3 +171,5 @@ int main(void)
     return EXIT_SUCCESS;
 
 }
+
+
