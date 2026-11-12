@@ -93,15 +93,15 @@ int main(void)
          * Consider adding a history utility
          */
 
-        // stops working for some reason
-        if (0 == (strcmp("exit", argv[0]))){ 
+       if (0 == (strcmp("exit", argv[0]))){ 
             if (argc != 1){
                 fprintf(stderr, "-trash: exit takes no extra inputs\n");
                 free(argv);
                 continue;
             }
             free(argv);
-            break;
+            free(arg_line);
+            exit(0);
         } else if (0 == (strcmp("cd", argv[0]))){ // Will only effect the working process
             if (argc == 1){
                 fprintf(stderr, "-trash: please provide a directory\n");
@@ -133,9 +133,9 @@ int main(void)
          */
 
         const char* home = getenv("HOME");
-
         char cmd_buf[100];
-        int written = snprintf(cmd_buf, sizeof(cmd_buf), "%s/personal_utils/%s", home, argv[0]);
+
+        int written = snprintf(cmd_buf, sizeof(cmd_buf), "%s/.personal_utils/%s", home, argv[0]);
 
         if (written >= sizeof(cmd_buf)){
             fprintf(stderr, "Sorry, your cmd's name is too large\n");
@@ -148,9 +148,8 @@ int main(void)
         switch(pid){
             case 0: ; // execute
                 if (-1 == execv(cmd_buf, argv)){
-                    fprintf(stderr, "exec failed\n");
-                    free(argv);
-                    continue;
+                    fprintf(stderr, "exec failed: likely an invalid command. see man page\n");
+                    exit(1);
                 }
             case -1:
                 fprintf(stderr, "fork failed\n");
@@ -159,9 +158,6 @@ int main(void)
             default: // parent process, wait for child to be done
                waitpid(pid,NULL,0);
         }
-
-
-
 
         free(argv);
 
