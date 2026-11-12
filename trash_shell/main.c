@@ -10,7 +10,6 @@
 
 /*
 * use exec to launch shell
-* Consider adding custom malloc and arena allocator
 * ignore signal handlers in parent prcoess but register INT/QUIT sigs in child process for &
 * Piping, >, >>, config files, & (sigchld required for async), etc
 * Extra: add history(special case), other coreutils
