@@ -7,14 +7,14 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
-// Consider adding custom malloc and arena allocator
 
-// use exec to launch shell
-// fork and exec
-// ignore signal handlers in parent prcoess but register INT/QUIT sigs in child process
-// add special handling for cd, exit, history. There are others but just these for now
-// Extra: Piping, >, >>, config files, & (sigchld required for async), etc
-
+/*
+* use exec to launch shell
+* Consider adding custom malloc and arena allocator
+* ignore signal handlers in parent prcoess but register INT/QUIT sigs in child process for &
+* add special handling for cd, exit, history. There are others but just these for now
+* Extra: Piping, >, >>, config files, & (sigchld required for async), etc
+*/
 
 // SIGINT signal handler for parent process
 bool interrupt_signal_recieved = false;
