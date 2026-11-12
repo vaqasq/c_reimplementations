@@ -9,28 +9,50 @@
 #include <signal.h>
 
 /*
-* use exec to launch shell
-* ignore signal handlers in parent prcoess but register INT/QUIT sigs in child process for &
-* Piping, >, >>, config files, & (sigchld required for async), etc
-* Extra: add history(special case), other coreutils
-*/
+ * use exec to launch shell
+ * problem: even during waitpid, sigchld is still sent. Use sigprocmask() to block SIGCHLD if async_cmd == true;
+ * Piping, >, >>, config files, & (sigchld required for async), etc
+ * Extra: add history(special case), other coreutils
+ */
 
 // SIGINT signal handler for parent process
-bool interrupt_signal_recieved = false;
+static bool interrupt_signal_recieved = false;
 
 static void parent_sigint_handler(int sig){
     interrupt_signal_recieved = true;
 }
 
-// write a child_siginit_handler. Consider _Exit() over exit() for async safety, perhaps it wont matter.
+void sigchld_handler(int sig) {
+    int status;
+    pid_t pid;
+
+    // Loop drains all pending terminated children
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        if (WIFEXITED(status)) { // Child exited normally
+            printf("[%d] process finished\n", pid);
+        } else if (WIFSIGNALED(status)) { // Child terminated by a signal (e.g. SIGKILL, SIGSEGV)
+            printf("[%d] process killed\n", pid);
+        } else {
+            printf("[%d] process finished abnormally\n", pid);
+        }
+    }
+
+}
 
 int main(void)
 {
 
-
     // register SIGINT handler.
     // Not as portable as sigaction()
     signal(SIGINT, parent_sigint_handler);
+
+    // register SIGCHLD handler.
+    struct sigaction sa = {
+        .sa_handler = sigchld_handler,
+        .sa_flags   = SA_RESTART | SA_NOCLDSTOP, // SA_NOCLDSTOP: Only fire on termination
+    };
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGCHLD, &sa, NULL);
 
     // disable stdio buffering
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -39,9 +61,11 @@ int main(void)
     size_t arg_line_len = 0;
     ssize_t nread;
     char* token;
+    bool async_cmd;
 
     while (1){
 
+        async_cmd = false;
         /*
          * prompt
          */
@@ -60,12 +84,14 @@ int main(void)
         // check if ^C was recived.
         if (interrupt_signal_recieved){
             interrupt_signal_recieved = false;
-            fprintf(stdout, "SIGINT recieved, input ignored\n");
             continue;
         }
 
         // remove \n from end
         if(nread > 0 && arg_line[nread-1] == '\n') arg_line[nread-1] = '\0';
+
+        // check for & async
+        if (nread > 0 && arg_line[nread-2] == '&') async_cmd = true;
 
         /*
          * make argc and argv
@@ -75,7 +101,7 @@ int main(void)
         int argc = 0;
         char **argv = malloc(capacity * sizeof(char *));
 
-        char *token = strtok(arg_line, " \t\n");
+        token = strtok(arg_line, " \t\n");
 
         while (token) {
             if (argc >= capacity) {
@@ -92,7 +118,7 @@ int main(void)
          * Consider adding a history utility
          */
 
-       if (0 == (strcmp("exit", argv[0]))){ 
+        if (0 == (strcmp("exit", argv[0]))){ 
             if (argc != 1){
                 fprintf(stderr, "-trash: exit takes no extra inputs\n");
                 free(argv);
@@ -111,7 +137,7 @@ int main(void)
                 free(argv);
                 continue;
             }
-            
+
             if (-1 == chdir(argv[1])){
                 fprintf(stderr, "cd failed\n");
                 free(argv);
@@ -124,6 +150,28 @@ int main(void)
             continue;
 
 
+        } else if (0 == (strcmp("exit", argv[0]))){
+            if (argc != 2){
+                fprintf(stderr, "-trash: kill usage: kill <pid>\n");
+                free(argv);
+                continue;
+            }
+
+            pid_t p = (pid_t)atoi(argv[1]);
+            if (p == 0){
+                fprintf(stderr, "-trash: invalid pid\n");
+                free(argv);
+                continue;
+            }
+
+            if (-1 == kill(p, SIGTERM)){
+                fprintf(stderr, "-trash: kill failed\n");
+                free(argv);
+                continue;
+            }
+            printf("[%d] killed\n",p);
+            free(argv);
+            continue;
         }
 
         /*
@@ -135,28 +183,36 @@ int main(void)
 
         int written = snprintf(cmd_buf, sizeof(cmd_buf), "%s/.personal_utils/%s", home, argv[0]);
 
-        if (written >= sizeof(cmd_buf)){
+        if (written == -1){
+            fprintf(stderr, "-trash: error during snprintf\n");
+            free(argv);
+            continue;
+        } else if ((size_t)written >= sizeof(cmd_buf)){
             fprintf(stderr, "Sorry, your cmd's name is too large\n");
             free(argv);
             continue;
         }
-    
+
         pid_t pid = fork();
-        
+
         switch(pid){
             case 0: ; // execute
-                if (-1 == execv(cmd_buf, argv)){
-                    fprintf(stderr, "exec failed: likely an invalid command. see man page\n");
-                    exit(1);
-                }
+                    if (-1 == execv(cmd_buf, argv)){
+                        fprintf(stderr, "exec failed: likely an invalid command. see man page\n");
+                        exit(1);
+                    }
             case -1:
-                fprintf(stderr, "fork failed\n");
-                free(argv);
-                continue;
-            default: // parent process, wait for child to be done
-               waitpid(pid,NULL,0);
+                    fprintf(stderr, "fork failed\n");
+                    free(argv);
+                    continue;
+            default: // parent process
+                    if (!async_cmd) waitpid(pid,NULL,0);
+                    else {
+                        printf("[%d] process running in the background\n", pid);
+                        async_cmd = false;
+                    }
         }
-
+        
         free(argv);
 
     }

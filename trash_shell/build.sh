@@ -1,1 +1,1 @@
-clang -O2 main.c -o trash
+clang -std=c23 -Wall -Wextra -fsanitize=address,undefined -O2 main.c -o trash
