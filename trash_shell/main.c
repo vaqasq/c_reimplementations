@@ -87,21 +87,26 @@ int main(void)
             continue;
         }
 
+
+
         // remove \n from end
         if(nread > 0 && arg_line[nread-1] == '\n') arg_line[nread-1] = '\0';
 
         // check for & async
-        if (nread > 0 && arg_line[nread-2] == '&') async_cmd = true;
+        if (nread >= 2 && arg_line[nread-2] == '&') async_cmd = true;
 
         /*
          * make argc and argv
          */
+
 
         int capacity = 8;
         int argc = 0;
         char **argv = malloc(capacity * sizeof(char *));
 
         token = strtok(arg_line, " \t\n");
+
+
 
         while (token) {
             if (argc >= capacity) {
@@ -117,6 +122,10 @@ int main(void)
          * Intercept if exit and cd.
          * Consider adding a history utility
          */
+
+        if (argc == 0){
+            continue;
+        }
 
         if (0 == (strcmp("exit", argv[0]))){ 
             if (argc != 1){
@@ -192,6 +201,7 @@ int main(void)
             free(argv);
             continue;
         }
+
 
         pid_t pid = fork();
 
