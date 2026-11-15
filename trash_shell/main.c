@@ -10,7 +10,6 @@
 
 /*
  * use exec to launch shell
- * problem: even during waitpid, sigchld is still sent. Use sigprocmask() to block SIGCHLD if async_cmd == false;
  * Piping, >, >>, config files, & (sigchld required for async), etc
  * Extra: add history(special case), other coreutils
  */
@@ -43,7 +42,7 @@ int main(void)
 {
 
     pid_t p = getpid();
-    printf("trash pid: %d\n", p);
+    printf("Welcome to the trash shell | pid: %d\n", p);
 
     // register SIGINT handler.
     // Not as portable as sigaction()
@@ -65,6 +64,7 @@ int main(void)
     ssize_t nread;
     char* token;
     bool async_cmd;
+    sigset_t mask, prev_mask;
 
     while (1){
 
@@ -96,148 +96,164 @@ int main(void)
         if(nread > 0 && arg_line[nread-1] == '\n') arg_line[nread-1] = '\0';
 
         // check for & async
-        if (nread >= 2 && arg_line[nread-2] == '&') async_cmd = true;
+        if (nread >= 2 && arg_line[nread-2] == '&') {
+            async_cmd = true;
+        } else{
+            // initialize a signal set containing only SIGCHLD
+            sigemptyset(&mask);
+            sigaddset(&mask, SIGCHLD);
 
-        /*
-         * make argc and argv
-         */
-
-
-        int capacity = 8;
-        int argc = 0;
-        char **argv = malloc(capacity * sizeof(char *));
-
-        token = strtok(arg_line, " \t\n");
-
-
-
-        while (token) {
-            if (argc >= capacity) {
-                capacity *= 2;
-                argv = realloc(argv, capacity * sizeof(char *));
-            }
-            argv[argc++] = token;
-            token = strtok(NULL, " \t\n");
-        }
-        argv[argc] = NULL;  
-
-        /*
-         * Intercept if exit and cd.
-         * Consider adding a history utility
-         */
-
-        if (argc == 0){
-            continue;
+            // block SIGCHLD BEFORE fork() to prevent a race condition
+            sigprocmask(SIG_BLOCK, &mask, &prev_mask);
         }
 
-        if (0 == strcmp("&",argv[argc-1])) argv[argc-1] = NULL;
+    
 
 
-        if (0 == (strcmp("exit", argv[0]))){ 
-            if (argc != 1){
-                fprintf(stderr, "-trash: exit takes no extra inputs\n");
-                free(argv);
-                continue;
-            }
-            free(argv);
-            exit(0);
-        } else if (0 == (strcmp("cd", argv[0]))){ // Will only effect the working process
-            if (argc == 1){
-                fprintf(stderr, "-trash: please provide a directory\n");
-                free(argv);
-                continue;
-            }
-            else if (argc > 2){
-                fprintf(stderr, "-trash: please provide a singular directory\n");
-                free(argv);
-                continue;
-            }
-
-            if (-1 == chdir(argv[1])){
-                fprintf(stderr, "cd failed\n");
-                free(argv);
-                continue;
-
-            }
-
-            printf("You are now in dir: %s\n", argv[1]);
-            free(argv);
-            continue;
+    /*
+     * make argc and argv
+     */
 
 
-        } else if (0 == (strcmp("exit", argv[0]))){
-            if (argc != 2){
-                fprintf(stderr, "-trash: kill usage: kill <pid>\n");
-                free(argv);
-                continue;
-            }
+    int capacity = 8;
+    int argc = 0;
+    char **argv = malloc(capacity * sizeof(char *));
 
-            pid_t p = (pid_t)atoi(argv[1]);
-            if (p == 0){
-                fprintf(stderr, "-trash: invalid pid\n");
-                free(argv);
-                continue;
-            }
+    token = strtok(arg_line, " \t\n");
 
-            if (-1 == kill(p, SIGTERM)){
-                fprintf(stderr, "-trash: kill failed\n");
-                free(argv);
-                continue;
-            }
-            printf("[%d] killed\n",p);
-            free(argv);
-            continue;
+
+
+    while (token) {
+        if (argc >= capacity) {
+            capacity *= 2;
+            argv = realloc(argv, capacity * sizeof(char *));
         }
+        argv[argc++] = token;
+        token = strtok(NULL, " \t\n");
+    }
+    argv[argc] = NULL;  
 
-        /*
-         * fork and exec
-         */
+    /*
+     * Intercept if exit and cd.
+     * Consider adding a history utility
+     */
 
-        const char* home = getenv("HOME");
-        char cmd_buf[100];
-
-        int written = snprintf(cmd_buf, sizeof(cmd_buf), "%s/.personal_utils/%s", home, argv[0]);
-
-        if (written == -1){
-            fprintf(stderr, "-trash: error during snprintf\n");
-            free(argv);
-            continue;
-        } else if ((size_t)written >= sizeof(cmd_buf)){
-            fprintf(stderr, "Sorry, your cmd's name is too large\n");
-            free(argv);
-            continue;
-        }
-
-
-        pid_t pid = fork();
-
-        switch(pid){
-            case 0: ; // execute
-                    if (-1 == execv(cmd_buf, argv)){
-                        fprintf(stderr, "exec failed: likely an invalid command. see man page\n");
-                        exit(1);
-                    }
-            case -1:
-                    fprintf(stderr, "fork failed\n");
-                    free(argv);
-                    continue;
-            default: // parent process
-                    if (!async_cmd){
-                        waitpid(pid,NULL,0);
-                    } 
-                    else {
-                        printf("[%d] process running in the background\n", pid);
-                        async_cmd = false;
-                        // Need to add proper err handling here. if say ls prints an error, you need to reformat. Ill just sleep for now
-                        sleep(1);
-                    }
-        }
-
-        free(argv);
-
+    if (argc == 0){
+        continue;
     }
 
-    return EXIT_SUCCESS;
+    if (0 == strcmp("&",argv[argc-1])) argv[argc-1] = NULL;
+
+
+    if (0 == (strcmp("exit", argv[0])) || 0 == (strcmp("quit", argv[0]))){ 
+        if (argc != 1){
+            fprintf(stderr, "-trash: exit/quit takes no extra inputs\n");
+            free(argv);
+            continue;
+        }
+        free(argv);
+        exit(0);
+    } else if (0 == (strcmp("cd", argv[0]))){ // Will only effect the working process
+        if (argc == 1){
+            fprintf(stderr, "-trash: please provide a directory\n");
+            free(argv);
+            continue;
+        }
+        else if (argc > 2){
+            fprintf(stderr, "-trash: please provide a singular directory\n");
+            free(argv);
+            continue;
+        }
+
+        if (-1 == chdir(argv[1])){
+            fprintf(stderr, "cd failed\n");
+            free(argv);
+            continue;
+
+        }
+
+        printf("You are now in dir: %s\n", argv[1]);
+        free(argv);
+        continue;
+
+
+    } else if (0 == (strcmp("kill", argv[0]))){
+        if (argc != 2){
+            fprintf(stderr, "-trash: kill usage: kill <pid>\n");
+            free(argv);
+            continue;
+        }
+
+        pid_t p = (pid_t)atoi(argv[1]);
+        if (p == 0){
+            fprintf(stderr, "-trash: invalid pid\n");
+            free(argv);
+            continue;
+        }
+
+        if (-1 == kill(p, SIGTERM)){
+            fprintf(stderr, "-trash: kill failed\n");
+            free(argv);
+            continue;
+        }
+        printf("[%d] killed\n",p);
+        free(argv);
+        continue;
+    }
+
+    /*
+     * fork and exec
+     */
+
+    const char* home = getenv("HOME");
+    char cmd_buf[100];
+
+    int written = snprintf(cmd_buf, sizeof(cmd_buf), "%s/.personal_utils/%s", home, argv[0]);
+
+    if (written == -1){
+        fprintf(stderr, "-trash: error during snprintf\n");
+        free(argv);
+        continue;
+    } else if ((size_t)written >= sizeof(cmd_buf)){
+        fprintf(stderr, "Sorry, your cmd's name is too large\n");
+        free(argv);
+        continue;
+    }
+
+
+    pid_t pid = fork();
+
+    switch(pid){
+        case 0: ; // execute
+                  // restore sigchld
+                sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+                if (-1 == execv(cmd_buf, argv)){
+                    fprintf(stderr, "exec failed: likely an invalid command. see man page\n");
+                    exit(1);
+                }
+        case -1:
+                fprintf(stderr, "fork failed\n");
+                free(argv);
+                continue;
+        default: // parent process
+                if (!async_cmd){
+                    waitpid(pid,NULL,0);
+                    sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+
+                } 
+                else {
+                    printf("[%d] process running in the background\n", pid);
+                    async_cmd = false;
+                    // Need to add proper err handling here. if say ls prints an error, you need to reformat. Ill just sleep for now
+                    sleep(1);
+                }
+    }
+
+    free(argv);
+
+}
+
+return EXIT_SUCCESS;
 
 }
 
