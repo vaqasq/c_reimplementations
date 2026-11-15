@@ -10,7 +10,7 @@
 
 /*
  * use exec to launch shell
- * problem: even during waitpid, sigchld is still sent. Use sigprocmask() to block SIGCHLD if async_cmd == true;
+ * problem: even during waitpid, sigchld is still sent. Use sigprocmask() to block SIGCHLD if async_cmd == false;
  * Piping, >, >>, config files, & (sigchld required for async), etc
  * Extra: add history(special case), other coreutils
  */
@@ -41,6 +41,9 @@ void sigchld_handler(int sig) {
 
 int main(void)
 {
+
+    pid_t p = getpid();
+    printf("trash pid: %d\n", p);
 
     // register SIGINT handler.
     // Not as portable as sigaction()
@@ -126,6 +129,9 @@ int main(void)
         if (argc == 0){
             continue;
         }
+
+        if (0 == strcmp("&",argv[argc-1])) argv[argc-1] = NULL;
+
 
         if (0 == (strcmp("exit", argv[0]))){ 
             if (argc != 1){
@@ -216,13 +222,17 @@ int main(void)
                     free(argv);
                     continue;
             default: // parent process
-                    if (!async_cmd) waitpid(pid,NULL,0);
+                    if (!async_cmd){
+                        waitpid(pid,NULL,0);
+                    } 
                     else {
                         printf("[%d] process running in the background\n", pid);
                         async_cmd = false;
+                        // Need to add proper err handling here. if say ls prints an error, you need to reformat. Ill just sleep for now
+                        sleep(1);
                     }
         }
-        
+
         free(argv);
 
     }
