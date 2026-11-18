@@ -10,7 +10,7 @@
 
 /*
  * use exec to launch shell
- * Piping, >, >>, config files, & (sigchld required for async), etc
+ * Piping, >, >>
  * Extra: add history(special case), other coreutils
  */
 
@@ -64,7 +64,7 @@ int main(void)
     size_t arg_line_len = 0;
     ssize_t nread;
     char* token;
-    bool async_cmd;
+    bool async_cmd, pipe_cmd;
     sigset_t mask, prev_mask;
 
     while (1){
@@ -110,12 +110,12 @@ int main(void)
 
 
 
-
         /*
          * make argc and argv
          */
 
 
+        // 8 is the just a good initial capacity
         int capacity = 8;
         int argc = 0;
         char **argv = malloc(capacity * sizeof(char *));
@@ -123,6 +123,7 @@ int main(void)
         token = strtok(arg_line, " \t\n");
 
 
+        // Can we integrate checking for |, >, or >> here? Maybe just > (usually means to overwrite, but I can make it append)
 
         while (token) {
             if (argc >= capacity) {
